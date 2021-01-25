@@ -1,7 +1,20 @@
 package models
 
+import (
+	"net"
+	"sync"
+)
+
 type Payload struct {
-	data []byte
+	addr *net.UDPAddr
+}
+
+type Genesis struct {
+	conn  *net.UDPConn
+	conns map[string]string
+	send  chan *Payload
+	exit  chan bool
+	wg    *sync.WaitGroup
 }
 
 type Peer struct {

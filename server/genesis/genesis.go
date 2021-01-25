@@ -1,62 +1,91 @@
 package genesis
 
 import (
-	"context"
+	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"sync"
 
 	"github.com/anmoldh121/falconet/models"
-	"github.com/anmoldh121/falconet/proto"
-	"google.golang.org/grpc/peer"
+	// "go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
 type Genesis struct {
+	conn  *net.TCPListener
 	conns map[string]string
 	send  chan *models.Payload
 	exit  chan bool
+	db    *mongo.Database
 	wg    *sync.WaitGroup
 }
 
-func (g *Genesis) Sender() {
-	g.wg.Add(1)
-	defer g.wg.Done()
+type Message struct {
+	Purpose int
+	PeerId  string
+}
 
+type Response struct {
+	addr string
+}
+
+func (g *Genesis) Receiver() {
 	for {
-		select {
-		case <-g.exit:
-			log.Printf("[Exiting] Sender")
-			return
-		case p := <-g.send:
-			fmt.Println(p)
-			return
+		con, err := g.conn.AcceptTCP()
+		if err != nil {
+			continue
 		}
+		go g.handleConnection(con)
 	}
 }
 
-func (g *Genesis) Register(ctx context.Context, req *proto.RegisterRequest) (*proto.RegisterResponse, error) {
-	_, ok := g.conns[req.Username]
-	if !ok {
-		c, _ := peer.FromContext(ctx)
-		fmt.Println(c.Addr.String())
-		g.conns[req.Username] = c.Addr.String()
+func (g *Genesis) handleConnection(conn *net.TCPConn) {
+	var buffer [4096]byte
+	fmt.Println(conn.RemoteAddr())
+	remoteAddr := conn.RemoteAddr()
+	n, err := conn.Read(buffer[0:])
+	if err != nil {
+		log.Fatal(err)
 	}
-	return &proto.RegisterResponse{
-		Status: 201,
-		Message: "SUCCESS",
-	},nil
+	mess := UnmarshalMessage(buffer[:n])
+	if mess.Purpose == 1 {
+		g.SavePeer(remoteAddr, mess)
+	}
 }
 
-func (g *Genesis) GetTarget(ctx context.Context, req *proto.GetTargetRequest) (*proto.GetTargetResponse, error) {
-	c, ok := g.conns[req.Username]
-	if !ok {
-		return &proto.GetTargetResponse{
-			Endpoint: "",
-			Username: "",
-		},nil
+func UnmarshalMessage(req []byte) Message {
+	var message Message
+	err := json.Unmarshal(req, &message)
+	if err != nil {
+		log.Fatal(err)
 	}
-	return &proto.GetTargetResponse{
-		Endpoint: c,
-		Username: req.Username,
-	},nil
+	return message
+}
+
+func (g *Genesis) SavePeer(addr net.Addr, message Message) {
+	// collection := g.db.Collection("peers")
+	// filter := bson.D{{"_id", message.PeerId}}
+	// update := bson.D{{"endpoint"}}
+	fmt.Println(message)
+}
+
+func (g *Genesis) Listen() {
+	g.Receiver()
+}
+
+func NewGenesis(addr *net.TCPAddr, db *mongo.Database) (*Genesis, error) {
+	c, err := net.ListenTCP("tcp", addr)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Genesis{
+		conn:  c,
+		conns: make(map[string]string),
+		send:  make(chan *models.Payload),
+		exit:  make(chan bool),
+		db:    db,
+		wg:    &sync.WaitGroup{},
+	}, nil
 }
