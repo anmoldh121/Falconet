@@ -1,14 +1,18 @@
 package genesis
 
 import (
+	// "bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/anmoldh121/falconet/models"
-	// "go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
@@ -22,8 +26,8 @@ type Genesis struct {
 }
 
 type Message struct {
-	Purpose int
-	PeerId  string
+	Purpose int    `json:"purpose,omitempty"`
+	PeerId  string `json:"peerId, omitempty" `
 }
 
 type Response struct {
@@ -41,16 +45,18 @@ func (g *Genesis) Receiver() {
 }
 
 func (g *Genesis) handleConnection(conn *net.TCPConn) {
-	var buffer [4096]byte
 	fmt.Println(conn.RemoteAddr())
 	remoteAddr := conn.RemoteAddr()
-	n, err := conn.Read(buffer[0:])
-	if err != nil {
-		log.Fatal(err)
-	}
-	mess := UnmarshalMessage(buffer[:n])
-	if mess.Purpose == 1 {
-		g.SavePeer(remoteAddr, mess)
+	decoder := json.NewDecoder(conn)
+	var message Message
+	err := decoder.Decode(&message)
+	fmt.Println(message, err)
+	conn.Close()
+	if message.Purpose == 1 {
+		err := g.SavePeer(remoteAddr, message)
+		if err != nil {
+			fmt.Println(err)
+		}
 	}
 }
 
@@ -60,14 +66,22 @@ func UnmarshalMessage(req []byte) Message {
 	if err != nil {
 		log.Fatal(err)
 	}
+	fmt.Println(message)
 	return message
 }
 
-func (g *Genesis) SavePeer(addr net.Addr, message Message) {
-	// collection := g.db.Collection("peers")
-	// filter := bson.D{{"_id", message.PeerId}}
-	// update := bson.D{{"endpoint"}}
-	fmt.Println(message)
+func (g *Genesis) SavePeer(addr net.Addr, message Message) error {
+	collection := g.db.Collection("peers")
+	id, _ := primitive.ObjectIDFromHex(message.PeerId)
+	filter := bson.D{{"_id", id}}
+	update := bson.D{{"$set", bson.D{{"endpoint", addr.String()}}}}
+	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+	updated, err := collection.UpdateOne(ctx, filter, update)
+	if err != nil {
+		return err
+	}
+	fmt.Println(updated.UpsertedID)
+	return nil
 }
 
 func (g *Genesis) Listen() {
