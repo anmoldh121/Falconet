@@ -47,6 +47,7 @@ func (g *Genesis) Receiver() {
 func (g *Genesis) handleConnection(conn *net.TCPConn) {
 	fmt.Println(conn.RemoteAddr())
 	remoteAddr := conn.RemoteAddr()
+	fmt.Println(remoteAddr.String())
 	decoder := json.NewDecoder(conn)
 	var message Message
 	err := decoder.Decode(&message)
