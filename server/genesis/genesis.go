@@ -72,6 +72,7 @@ func UnmarshalMessage(req []byte) Message {
 }
 
 func (g *Genesis) SavePeer(addr net.Addr, message Message) error {
+	fmt.Println(addr, "Addresss")
 	collection := g.db.Collection("peers")
 	id, _ := primitive.ObjectIDFromHex(message.PeerId)
 	filter := bson.D{{"_id", id}}
