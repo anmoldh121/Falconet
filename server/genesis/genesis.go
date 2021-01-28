@@ -53,7 +53,7 @@ func (g *Genesis) handleConnection(conn *net.TCPConn) {
 	err := decoder.Decode(&message)
 	fmt.Println(message, err)
 	conn.Close()
-	if message.Purpose == 1 {
+	if true {
 		fmt.Println("comes herer")
 		err := g.SavePeer(remoteAddr, message)
 		if err != nil {
